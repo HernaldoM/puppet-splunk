@@ -18,11 +18,13 @@ class splunk::platform::posix (
   $splunkd_port = undef,
   $splunk_user = $splunk::params::splunk_user,
   $server_service = undef,
+  $version = $splunk::params::version,
 ) inherits splunk::virtual {
 
   include ::splunk::params
   # Many of the resources declared here are virtual. They will be realized by
   # the appropriate including class if required.
+
 
   # Commands to run to enable the SplunkUniversalForwarder
   @exec { 'license_splunkforwarder':
@@ -34,11 +36,19 @@ class splunk::platform::posix (
     tag     => 'splunk_forwarder',
     notify  => Service['splunk'],
   }
-  @exec { 'enable_splunkforwarder':
 
+  # If version of splunk >= 7.2.2, then command `splunk enable boot-start` creates systemd service NOT init.d file
+  if versioncmp($version, '7.2.2') < 0 {
+    $created_file = '/etc/init.d/splunk'
+  }
+  else {
+    $created_file = '/etc/systemd/system/multi-user.target.wants'
+  }
+
+  @exec { 'enable_splunkforwarder':
     # The path parameter can't be set because the boot-start silently fails on systemd service providers
     command => "${splunk::params::forwarder_dir}/bin/splunk enable boot-start -user ${splunk_user}",
-    creates => '/etc/init.d/splunk',
+    creates => "${created_file}/SplunkForwarder.service",
     require => Exec['license_splunkforwarder'],
     tag     => 'splunk_forwarder',
     notify  => Service['splunk'],
@@ -56,7 +66,7 @@ class splunk::platform::posix (
   @exec { 'enable_splunk':
     # The path parameter can't be set because the boot-start silently fails on systemd service providers
     command => "${splunk::params::server_dir}/bin/splunk enable boot-start -user ${splunk_user}",
-    creates => '/etc/init.d/splunk',
+    creates => "${created_file}/Splunkd.service",
     require => Exec['license_splunk'],
     tag     => 'splunk_server',
     before  => Service['splunk'],
